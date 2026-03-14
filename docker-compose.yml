@@ -4,7 +4,7 @@ version: '3.8'
 
 services:
   n8n-mcp:
-    image: ghcr.io/abrahamgkiv/n8n-mcp:latest
+    image: ghcr.io/abrahamgkiv/n8n-mcp
     container_name: n8n-mcp
     restart: unless-stopped
     
