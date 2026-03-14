@@ -25,6 +25,11 @@ services:
       NODE_DB_PATH: ${NODE_DB_PATH:-/app/data/nodes.db}
       REBUILD_ON_START: ${REBUILD_ON_START:-false}
       N8N_MCP_TELEMETRY_DISABLED: "true"
+      N8N_API_URL: ${N8N_API_URL}
+      N8N_API_KEY: ${N8N_API_KEY}
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN}
+      N8N_MODE: "true"
+      
 
       # Telemetry: Anonymous usage statistics are ENABLED by default
       # To opt-out, uncomment and set to 'true':
