@@ -27,14 +27,8 @@ services:
       N8N_MCP_TELEMETRY_DISABLED: "true"
       MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN}
       N8N_MODE: "true"
-      
-
-      # Telemetry: Anonymous usage statistics are ENABLED by default
-      # To opt-out, uncomment and set to 'true':
-      # N8N_MCP_TELEMETRY_DISABLED: ${N8N_MCP_TELEMETRY_DISABLED:-true}
-
-      # Optional: n8n API configuration (enables 16 additional management tools)
-      # Uncomment and configure to enable n8n workflow management
+      ENABLE_MULTI_TENANT: "true"
+      MULTI_TENANT_SESSION_STRATEGY: "instance"
       N8N_API_URL: ${N8N_API_URL}
       N8N_API_KEY: ${N8N_API_KEY}
       N8N_API_TIMEOUT: ${N8N_API_TIMEOUT:-30000}
