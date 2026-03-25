@@ -7,6 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.40.5] - 2026-03-22
+
+### Fixed
+
+- **Webhook workflows created via MCP get 404 errors** (Issue #643): Auto-inject `webhookId` (UUID) on webhook-type nodes (`webhook`, `webhookTrigger`, `formTrigger`, `chatTrigger`) during `cleanWorkflowForCreate()` and `cleanWorkflowForUpdate()`. n8n 2.10+ requires this field for proper webhook URL registration; without it, webhooks silently fail with 404. Existing `webhookId` values are preserved.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.40.4] - 2026-03-22
+
+### Fixed
+
+- **Incorrect data tables availability info**: Removed "enterprise/cloud only" restriction from tool description and documentation — data tables are available on all n8n plans including self-hosted
+- **Redundant pitfalls removed**: Removed "Requires N8N_API_URL and N8N_API_KEY" and "enterprise or cloud plans" pitfalls — the first is implicit for all n8n management tools, the second was incorrect
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.40.3] - 2026-03-22
+
+### Fixed
+
+- **Notification 400 disconnect storms (#654)**: `handleRequest()` now returns 202 Accepted for JSON-RPC notifications with stale/expired session IDs instead of 400. Per JSON-RPC 2.0 spec, notifications don't expect responses — returning 400 caused Claude's proxy to trigger reconnection storms (930 errors/day, 216 users affected)
+- **TOCTOU race in session lookup**: Added null guard after transport assignment to handle sessions removed between the existence check and use
+- **`updateTable` silently ignoring `columns` parameter**: Now returns a warning message when `columns` is passed to `updateTable`, clarifying that table schema is immutable after creation via the public API
+- **Tool schema descriptions clarified**: `name` and `columns` parameter descriptions now explicitly document that `updateTable` is rename-only and columns are for `createTable` only
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.40.2] - 2026-03-22
+
+### Fixed
+
+- **Double URL-encoding of `filter` and `sortBy` in `getRows`/`deleteRows`**: Moved `encodeURIComponent()` from handler layer to a custom `paramsSerializer` in the API client. Handlers were encoding values before passing them as Axios params, causing double-encoding (`%257B` instead of `%7B`). Handlers now pass raw values; the API client encodes once via `serializeDataTableParams()`
+- **`updateTable` documentation clarified**: Explicitly notes that only renaming is supported (no column modifications via public API)
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.40.1] - 2026-03-21
+
+### Fixed
+
+- **`n8n_manage_datatable` row operations broken by MCP transport serialization**: `data` parameter received as string instead of JSON — added `z.preprocess` coercers for array/object/filter params
+- **`n8n_manage_datatable` filter/sortBy URL encoding**: n8n API requires URL-encoded query params — added `encodeURIComponent()` for filter and sortBy in getRows and deleteRows (revised in 2.40.2 to move encoding to API client layer)
+- **`json` column type rejected by n8n API**: Removed `json` from column type enum (n8n only accepts string/number/boolean/date)
+- **Garbled 404 error messages**: Fixed `N8nNotFoundError` constructor — API error messages are now passed through cleanly instead of being wrapped in "Resource with ID ... not found"
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.40.0] - 2026-03-21
+
+### Changed
+
+- **`n8n_manage_datatable` MCP tool** (replaces `n8n_create_data_table`): Full data table management covering all 10 n8n data table API endpoints
+  - **Table operations**: createTable, listTables, getTable, updateTable, deleteTable
+  - **Row operations**: getRows, insertRows, updateRows, upsertRows, deleteRows
+  - Filter system with and/or logic and 8 condition operators (eq, neq, like, ilike, gt, gte, lt, lte)
+  - Dry-run support for updateRows, upsertRows, deleteRows
+  - Pagination, sorting, and full-text search for row listing
+  - Shared error handler and consolidated Zod schemas for consistency
+  - 9 new `N8nApiClient` methods for all data table endpoints
+- **`projectId` parameter for `n8n_create_workflow`**: Create workflows directly in a specific team project (enterprise feature)
+
+### Breaking
+
+- `n8n_create_data_table` tool replaced by `n8n_manage_datatable` with `action: "createTable"`
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.38.0] - 2026-03-20
+
+### Added
+
+- **`transferWorkflow` diff operation** (Issue #644): Move workflows between projects via `n8n_update_partial_workflow`
+  - New `transferWorkflow` operation type with `destinationProjectId` parameter
+  - Calls `PUT /workflows/{id}/transfer` via dedicated API after workflow update
+  - Proper error handling: returns `{ success: false, saved: true }` when transfer fails after update
+  - Transfer executes before activation so workflow is in target project first
+  - Zod schema validates `destinationProjectId` is non-empty
+  - Updated tool description and documentation to list the new operation
+  - `inferIntentFromOperations` returns descriptive intent for transfer operations
+  - `N8nApiClient.transferWorkflow()` method added
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.37.4] - 2026-03-18
+
+### Changed
+
+- **Updated n8n dependencies**: n8n 2.11.4 → 2.12.3, n8n-core 2.11.1 → 2.12.0, n8n-workflow 2.11.1 → 2.12.0, @n8n/n8n-nodes-langchain 2.11.2 → 2.12.0
+- **Rebuilt node database**: 1,239 nodes (809 from n8n-nodes-base and @n8n/n8n-nodes-langchain, 430 community)
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
 ## [2.37.3] - 2026-03-15
 
 ### Fixed
