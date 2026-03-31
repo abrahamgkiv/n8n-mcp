@@ -7,7 +7,7 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { existsSync, promises as fs } from 'fs';
+import { existsSync, readFileSync, promises as fs } from 'fs';
 import path from 'path';
 import { n8nDocumentationToolsFinal } from './tools';
 import { UIAppRegistry } from './ui';
@@ -748,6 +748,13 @@ export class N8NDocumentationMCPServer {
       // tool's inputSchema as the source of truth.
       processedArgs = this.coerceStringifiedJsonParams(name, processedArgs);
 
+      // Strip undefined values from args (#611) — VS Code extension sends
+      // explicit undefined values which Zod's .optional() rejects.
+      // Removing them makes Zod treat them as missing (which .optional() allows).
+      if (processedArgs) {
+        processedArgs = JSON.parse(JSON.stringify(processedArgs));
+      }
+
       try {
         logger.debug(`Executing tool: ${name}`, { args: processedArgs });
         const startTime = Date.now();
@@ -1303,6 +1310,7 @@ export class N8NDocumentationMCPServer {
         return this.searchNodes(args.query, limit, {
           mode: args.mode,
           includeExamples: args.includeExamples,
+          includeOperations: args.includeOperations,
           source: args.source
         });
       case 'get_node':
@@ -1407,6 +1415,8 @@ export class N8NDocumentationMCPServer {
               requiredService: args.requiredService,
               targetAudience: args.targetAudience
             }, searchLimit, searchOffset);
+          case 'patterns':
+            return this.getWorkflowPatterns(args.task as string | undefined, searchLimit);
           case 'keyword':
           default:
             if (!args.query) {
@@ -1674,6 +1684,7 @@ export class N8NDocumentationMCPServer {
       mode?: 'OR' | 'AND' | 'FUZZY';
       includeSource?: boolean;
       includeExamples?: boolean;
+      includeOperations?: boolean;
       source?: 'all' | 'core' | 'community' | 'verified';
     }
   ): Promise<any> {
@@ -1716,6 +1727,7 @@ export class N8NDocumentationMCPServer {
     options?: {
       includeSource?: boolean;
       includeExamples?: boolean;
+      includeOperations?: boolean;
       source?: 'all' | 'core' | 'community' | 'verified';
     }
   ): Promise<any> {
@@ -1729,7 +1741,7 @@ export class N8NDocumentationMCPServer {
     
     // For FUZZY mode, use LIKE search with typo patterns
     if (mode === 'FUZZY') {
-      return this.searchNodesFuzzy(cleanedQuery, limit);
+      return this.searchNodesFuzzy(cleanedQuery, limit, { includeOperations: options?.includeOperations });
     }
     
     let ftsQuery: string;
@@ -1820,7 +1832,7 @@ export class N8NDocumentationMCPServer {
       if (cleanedQuery.toLowerCase().includes('http') && !hasHttpRequest) {
         // FTS missed HTTP Request, fall back to LIKE search
         logger.debug('FTS missed HTTP Request node, augmenting with LIKE search');
-        return this.searchNodesLIKE(query, limit);
+        return this.searchNodesLIKE(query, limit, options);
       }
       
       const result: any = {
@@ -1845,6 +1857,14 @@ export class N8NDocumentationMCPServer {
             }
             if ((node as any).npm_downloads) {
               nodeResult.npmDownloads = (node as any).npm_downloads;
+            }
+          }
+
+          // Add operations tree if requested
+          if (options?.includeOperations) {
+            const opsTree = this.buildOperationsTree(node.operations);
+            if (opsTree) {
+              nodeResult.operationsTree = opsTree;
             }
           }
 
@@ -1915,7 +1935,13 @@ export class N8NDocumentationMCPServer {
     }
   }
   
-  private async searchNodesFuzzy(query: string, limit: number): Promise<any> {
+  private async searchNodesFuzzy(
+    query: string,
+    limit: number,
+    options?: {
+      includeOperations?: boolean;
+    }
+  ): Promise<any> {
     if (!this.db) throw new Error('Database not initialized');
     
     // Split into words for fuzzy matching
@@ -1956,14 +1982,26 @@ export class N8NDocumentationMCPServer {
     return {
       query,
       mode: 'FUZZY',
-      results: matchingNodes.map(node => ({
-        nodeType: node.node_type,
-        workflowNodeType: getWorkflowNodeType(node.package_name, node.node_type),
-        displayName: node.display_name,
-        description: node.description,
-        category: node.category,
-        package: node.package_name
-      })),
+      results: matchingNodes.map(node => {
+        const nodeResult: any = {
+          nodeType: node.node_type,
+          workflowNodeType: getWorkflowNodeType(node.package_name, node.node_type),
+          displayName: node.display_name,
+          description: node.description,
+          category: node.category,
+          package: node.package_name
+        };
+
+        // Add operations tree if requested
+        if (options?.includeOperations) {
+          const opsTree = this.buildOperationsTree(node.operations);
+          if (opsTree) {
+            nodeResult.operationsTree = opsTree;
+          }
+        }
+
+        return nodeResult;
+      }),
       totalCount: matchingNodes.length
     };
   }
@@ -2068,6 +2106,7 @@ export class N8NDocumentationMCPServer {
     options?: {
       includeSource?: boolean;
       includeExamples?: boolean;
+      includeOperations?: boolean;
       source?: 'all' | 'core' | 'community' | 'verified';
     }
   ): Promise<any> {
@@ -2124,6 +2163,14 @@ export class N8NDocumentationMCPServer {
             }
             if ((node as any).npm_downloads) {
               nodeResult.npmDownloads = (node as any).npm_downloads;
+            }
+          }
+
+          // Add operations tree if requested
+          if (options?.includeOperations) {
+            const opsTree = this.buildOperationsTree(node.operations);
+            if (opsTree) {
+              nodeResult.operationsTree = opsTree;
             }
           }
 
@@ -2210,6 +2257,14 @@ export class N8NDocumentationMCPServer {
           }
           if ((node as any).npm_downloads) {
             nodeResult.npmDownloads = (node as any).npm_downloads;
+          }
+        }
+
+        // Add operations tree if requested
+        if (options?.includeOperations) {
+          const opsTree = this.buildOperationsTree(node.operations);
+          if (opsTree) {
+            nodeResult.operationsTree = opsTree;
           }
         }
 
@@ -2581,6 +2636,51 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
         nodeCount: pkg.count,
       })),
     };
+  }
+
+  /**
+   * Parse raw operations data and group by resource into a compact tree.
+   * Returns undefined when there are no operations (e.g. trigger nodes, Code node).
+   */
+  private buildOperationsTree(operationsRaw: string | any[] | null | undefined): Array<{resource: string, operations: string[]}> | undefined {
+    if (!operationsRaw) return undefined;
+
+    let ops: any[];
+    if (typeof operationsRaw === 'string') {
+      try {
+        ops = JSON.parse(operationsRaw);
+      } catch {
+        return undefined;
+      }
+    } else if (Array.isArray(operationsRaw)) {
+      ops = operationsRaw;
+    } else {
+      return undefined;
+    }
+
+    if (!Array.isArray(ops) || ops.length === 0) return undefined;
+
+    // Group by resource
+    const byResource = new Map<string, string[]>();
+    for (const op of ops) {
+      const resource = op.resource || 'default';
+      const opName = op.name || op.operation;
+      if (!opName) continue;
+      if (!byResource.has(resource)) {
+        byResource.set(resource, []);
+      }
+      const list = byResource.get(resource)!;
+      if (!list.includes(opName)) {
+        list.push(opName);
+      }
+    }
+
+    if (byResource.size === 0) return undefined;
+
+    return Array.from(byResource.entries()).map(([resource, operations]) => ({
+      resource,
+      operations
+    }));
   }
 
   private async getNodeEssentials(nodeType: string, includeExamples?: boolean): Promise<any> {
@@ -3780,6 +3880,71 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
     };
   }
   
+  private workflowPatternsCache: {
+    generatedAt: string;
+    templateCount: number;
+    categories: Record<string, {
+      templateCount: number;
+      pattern: string;
+      nodes?: Array<{ type: string; frequency: number; role: string; displayName: string }>;
+      commonChains?: Array<{ chain: string[]; count: number; frequency: number }>;
+    }>;
+  } | null = null;
+
+  private getWorkflowPatterns(category?: string, limit: number = 10): any {
+    // Load patterns file (cached after first load)
+    if (!this.workflowPatternsCache) {
+      try {
+        const patternsPath = path.join(__dirname, '..', '..', 'data', 'workflow-patterns.json');
+        if (existsSync(patternsPath)) {
+          this.workflowPatternsCache = JSON.parse(readFileSync(patternsPath, 'utf-8'));
+        } else {
+          return { error: 'Workflow patterns not generated yet. Run: npm run mine:patterns' };
+        }
+      } catch (e) {
+        return { error: `Failed to load workflow patterns: ${e instanceof Error ? e.message : String(e)}` };
+      }
+    }
+
+    const patterns = this.workflowPatternsCache!;
+
+    if (category) {
+      // Return specific category pattern data (trimmed for token efficiency)
+      const categoryData = patterns.categories[category];
+      if (!categoryData) {
+        const available = Object.keys(patterns.categories);
+        return { error: `Unknown category "${category}". Available: ${available.join(', ')}` };
+      }
+      const MAX_CHAINS = 5;
+      return {
+        category,
+        templateCount: categoryData.templateCount,
+        pattern: categoryData.pattern,
+        nodes: categoryData.nodes?.slice(0, limit).map(n => ({
+          type: n.type, freq: n.frequency, role: n.role
+        })),
+        chains: categoryData.commonChains?.slice(0, MAX_CHAINS).map(c => ({
+          path: c.chain.map(t => t.split('.').pop() ?? t), count: c.count, freq: c.frequency
+        })),
+      };
+    }
+
+    // Return overview of all categories
+    const overview = Object.entries(patterns.categories).map(([name, data]) => ({
+      category: name,
+      templateCount: data.templateCount,
+      pattern: data.pattern,
+      topNodes: data.nodes?.slice(0, 5).map(n => n.displayName || n.type),
+    }));
+
+    return {
+      templateCount: patterns.templateCount,
+      generatedAt: patterns.generatedAt,
+      categories: overview,
+      tip: 'Use search_templates({searchMode: "patterns", task: "category_name"}) for full pattern data with nodes, chains, and tips.',
+    };
+  }
+
   private async getTemplatesForTask(task: string, limit: number = 10, offset: number = 0): Promise<any> {
     await this.ensureInitialized();
     if (!this.templateService) throw new Error('Template service not initialized');

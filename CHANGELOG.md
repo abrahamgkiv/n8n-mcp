@@ -7,6 +7,106 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.42.3] - 2026-03-30
+
+### Improved
+
+- **Patterns response trimmed for token efficiency** (Issue #683): Task-specific patterns response reduced ~64% — dropped redundant `displayName`, shortened field names (`frequency` → `freq`), capped chains at 5, and shortened chain node types to last segment.
+
+- **`patterns` mode added to `tools_documentation`**: Was missing from both essentials and full docs. AI agents can now discover patterns mode through the standard documentation flow.
+
+- **`includeOperations` omission behavior documented**: Added note that trigger nodes and freeform nodes (Code, HTTP Request) omit the `operationsTree` field.
+
+- **`search_nodes` examples trimmed**: Reduced from 11 to 6 examples in full docs, removing near-duplicates.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.42.2] - 2026-03-30
+
+### Fixed
+
+- **`workflow-patterns.json` missing from npm package** (Issue #681): Added `data/workflow-patterns.json` to the `files` array in `package.json` so the patterns file is included in the published npm package and works out of the box without manual generation.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.42.1] - 2026-03-30
+
+### Fixed
+
+- **Community nodes missing from database after rebuild**: Restored 584 community nodes from the n8n 2.13.3 snapshot and re-extracted operations with resource grouping from `properties_schema`. 366 community nodes now have proper resource-grouped operations.
+
+- **Community node service missing resource extraction**: `extractOperations()` in `community-node-service.ts` was not extracting `resource` from `displayOptions.show.resource`, same issue that was fixed in `property-extractor.ts` in v2.42.0.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.42.0] - 2026-03-30
+
+### Added
+
+- **`includeOperations` flag for search_nodes**: Opt-in parameter that returns a resource/operation tree per search result, grouped by resource (e.g., Slack returns 7 resources with 44 operations). Saves a mandatory `get_node` round-trip when building workflows. Adds ~100-300 tokens per result.
+
+- **`searchMode: "patterns"` for search_templates**: New lightweight mode that serves workflow pattern summaries mined from 2,700+ templates. Returns common node combinations, connection chains, and frequency data per task category (10 categories: ai_automation, webhook_processing, scheduling, etc.). Use `task` parameter for category-specific patterns or omit for overview.
+
+- **Workflow pattern mining script** (`npm run mine:patterns`): Extracts node frequency, co-occurrence, and connection topology from the template database. Two-pass pipeline: Pass 1 analyzes `nodes_used` metadata (no decompression), Pass 2 decompresses workflows for connection analysis. Produces `data/workflow-patterns.json` with 554 node types, 3,201 edges, and 5,246 chains.
+
+### Fixed
+
+- **Operations extraction now includes resource grouping**: The property extractor was using `find()` to get only the first `operation` property, but n8n nodes have multiple operation properties each mapped to a different resource via `displayOptions.show.resource`. Changed to `filter()` to capture all operation properties. Slack went from 17 flat operations to 44 operations across 7 named resources.
+
+- **FTS-to-LIKE fallback dropped search options**: When the FTS5 search fell back to LIKE-based search (e.g., for "http request"), the `options` object (including `includeOperations`, `includeExamples`, `source`) was silently lost. Now correctly passed through.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.41.4] - 2026-03-30
+
+### Fixed
+
+- **`validate_workflow` misses `conditions.options` check for If/Switch nodes** (Issue #675): Added version-conditional validation — If v2.2+ and Switch v3.2+ now require `conditions.options` metadata, If v2.0-2.1 validates operator structures, and v1.x is left unchecked. Previously only caught by `n8n_create_workflow` pre-flight but not by offline `validate_workflow`.
+
+- **False positive "Set node has no fields configured" for Set v3+** (Issue #676): The `validateSet` checker now recognizes `config.assignments.assignments` (v3+ schema) in addition to `config.values` (v1/v2 schema). Updated suggestion text to match current UI terminology.
+
+- **Expression validator does not detect unwrapped n8n expressions** (Issue #677): Added heuristic pre-pass that detects bare `$json`, `$node`, `$input`, `$execution`, `$workflow`, `$prevNode`, `$env`, `$now`, `$today`, `$itemIndex`, and `$runIndex` references missing `={{ }}` wrappers. Uses anchored patterns to avoid false positives. Emits warnings, not errors.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.41.3] - 2026-03-27
+
+### Fixed
+
+- **Session timeout default too low** (Issue #626): Raised `SESSION_TIMEOUT_MINUTES` default from 5 to 30 minutes. The 5-minute default caused sessions to expire mid-operation during complex multi-step workflows (validate → get structure → patch → validate), forcing users to retry. Configurable via environment variable.
+
+- **Operations array received as string from VS Code** (Issue #600): Added `z.preprocess` JSON string parsing to the `operations` parameter in `n8n_update_partial_workflow`. The VS Code MCP extension serializes arrays as JSON strings — the Zod schema now transparently parses them before validation.
+
+- **`undefined` values rejected in MCP tool calls from VS Code** (Issue #611): Strip explicit `undefined` values from tool arguments before Zod validation. VS Code sends `undefined` as a value which Zod's `.optional()` rejects (it expects the field to be missing, not present-but-undefined).
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.41.2] - 2026-03-27
+
+### Fixed
+
+- **MCP initialization floods Claude Desktop with JSON parse errors** (Issues #628, #627, #567): Intercept `process.stdout.write` in stdio mode to redirect non-JSON-RPC output to stderr. Console method suppression alone was insufficient — native modules (better-sqlite3), n8n packages, and third-party code can call `process.stdout.write()` directly, corrupting the JSON-RPC stream. Only writes containing valid JSON-RPC messages (`{"jsonrpc":...}`) are now allowed through stdout; everything else is redirected to stderr. This fixes the flood of "Unexpected token is not valid JSON" warnings on every new chat in Claude Desktop, including leaked `refCount`, `dbPath`, `clientVersion`, `protocolVersion`, and other debug strings.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.41.1] - 2026-03-27
+
+### Fixed
+
+- **If node operators silently fail at runtime** (Issue #665): Replaced incorrect operator names `isNotEmpty`/`isEmpty` with `notEmpty`/`empty` across all validators, sanitizer, documentation, and error messages. n8n's execution engine does not recognize `isNotEmpty`/`isEmpty` — unknown operators silently return `false`, causing If/Switch conditions to always take the wrong branch. Added auto-correction in the sanitizer so existing workflows using legacy names are fixed on update.
+
+- **`addConnection` creates broken connections with `type: "0"`** (Issue #659): Fixed two edge cases where numeric `targetInput` or `sourceOutput` values leaked into connection objects as `"type": "0"` instead of `"type": "main"`. Numeric `targetInput` values are now remapped to `"main"`, and the `sourceOutput` remapping guard was relaxed to handle redundant `sourceOutput: 0` + `sourceIndex: 0` combinations. Also resolves Issue #653 (dangling connections after `removeNode`) which was caused by malformed connections from this bug.
+
+- **`__patch_find_replace` corrupts Code node jsCode** (Issue #642): Implemented the `__patch_find_replace` feature for surgical string edits in `updateNode` operations. Previously, passing `{"parameters.jsCode": {"__patch_find_replace": [...]}}` stored the patch object literally as jsCode, producing `[object Object]` at runtime. The feature now reads the current string value, applies each `{find, replace}` entry sequentially, and writes back the modified string. Includes validation for patch format, target property existence, and string type.
+
+### Improved
+
+- Extracted `OPERATOR_CORRECTIONS` and `UNARY_OPERATORS` to module-level constants for better performance and single source of truth
+- Added `exists`/`notExists` to unary operator lists for consistency across sanitizer and validator
+- Fixed recovery guidance referencing non-existent `validate_node_operation` tool (now `validate_node`)
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
 ## [2.41.0] - 2026-03-25
 
 ### Changed
